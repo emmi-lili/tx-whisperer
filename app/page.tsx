@@ -5,6 +5,7 @@ import TxInputCard from '@/components/TxInputCard';
 import ChainBadge from '@/components/ChainBadge';
 import ExplorerLinks from '@/components/ExplorerLinks';
 import HistoryList from '@/components/HistoryList';
+import SampleHashes from '@/components/SampleHashes';
 import { detectChain, isValidTx, normalizeTx, ChainType } from '@/lib/tx';
 import { getHistory, addToHistory, clearHistory } from '@/lib/storage';
 
@@ -123,6 +124,11 @@ export default function Home() {
             <ExplorerLinks tx={currentTx} chain={currentChain} />
           </div>
         )}
+
+        {/* Sample hashes section */}
+        <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-2xl p-6 shadow-xl">
+          <SampleHashes onSelect={handleSubmit} />
+        </div>
 
         {/* History section */}
         <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-2xl p-6 shadow-xl">
