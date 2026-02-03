@@ -5,7 +5,19 @@
  * No test runner required.
  */
 
-import { detectChain, normalizeTx, extractFromUrl, isValidTx, ChainType } from './tx';
+import { 
+  detectChain, 
+  normalizeTx, 
+  extractFromUrl, 
+  isValidTx, 
+  detectInputType,
+  isEvmAddress,
+  isSolanaAddress,
+  isBitcoinAddress,
+  detectChainFromAddress,
+  ChainType,
+  InputType 
+} from './tx';
 
 // Simple assertion helper
 let passed = 0;
@@ -65,6 +77,23 @@ export const SAMPLE_HASHES = {
     '0000000000000000000000000000000000000000000000000000000000000000', // All zeros
     '', // Empty
     '   ', // Whitespace only
+  ],
+};
+
+// Sample addresses for testing
+export const SAMPLE_ADDRESSES = {
+  evm: [
+    '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045', // Vitalik's address
+    '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC contract
+  ],
+  bitcoin: [
+    '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', // Genesis block address (Satoshi)
+    '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy', // P2SH address
+    'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', // Bech32 address
+  ],
+  solana: [
+    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC on Solana
+    'So11111111111111111111111111111111111111112', // Wrapped SOL
   ],
 };
 
@@ -143,6 +172,50 @@ assert(isValidTx(SAMPLE_HASHES.bitcoin[0]), 'Valid Bitcoin hash returns true');
 assert(isValidTx(SAMPLE_HASHES.solana[0]), 'Valid Solana hash returns true');
 assert(!isValidTx('invalid'), 'Invalid hash returns false');
 assert(!isValidTx(''), 'Empty string returns false');
+
+// =============================================================================
+// Address Detection Tests
+// =============================================================================
+
+section('isEvmAddress()');
+assert(isEvmAddress(SAMPLE_ADDRESSES.evm[0]), 'Detects Vitalik address as EVM');
+assert(isEvmAddress(SAMPLE_ADDRESSES.evm[1]), 'Detects USDC contract as EVM');
+assert(isEvmAddress('0x' + 'a'.repeat(40)), 'Accepts 0x + 40 hex chars');
+assert(!isEvmAddress('0x' + 'a'.repeat(64)), 'Rejects 0x + 64 hex (tx hash, not address)');
+assert(!isEvmAddress('0x' + '0'.repeat(40)), 'Rejects all-zeros address');
+
+section('isBitcoinAddress()');
+assert(isBitcoinAddress(SAMPLE_ADDRESSES.bitcoin[0]), 'Detects legacy P2PKH address (starts with 1)');
+assert(isBitcoinAddress(SAMPLE_ADDRESSES.bitcoin[1]), 'Detects P2SH address (starts with 3)');
+assert(isBitcoinAddress(SAMPLE_ADDRESSES.bitcoin[2]), 'Detects Bech32 address (starts with bc1)');
+assert(!isBitcoinAddress('1'), 'Rejects too-short address');
+assert(!isBitcoinAddress('2' + 'a'.repeat(30)), 'Rejects invalid prefix');
+
+section('isSolanaAddress()');
+assert(isSolanaAddress(SAMPLE_ADDRESSES.solana[0]), 'Detects USDC Solana address');
+assert(isSolanaAddress(SAMPLE_ADDRESSES.solana[1]), 'Detects Wrapped SOL address');
+assert(!isSolanaAddress('abc'), 'Rejects too-short string');
+
+section('detectChainFromAddress()');
+assertEqual(detectChainFromAddress(SAMPLE_ADDRESSES.evm[0]), 'evm', 'Detects EVM address chain');
+assertEqual(detectChainFromAddress(SAMPLE_ADDRESSES.bitcoin[0]), 'bitcoin', 'Detects Bitcoin legacy address chain');
+assertEqual(detectChainFromAddress(SAMPLE_ADDRESSES.bitcoin[2]), 'bitcoin', 'Detects Bitcoin Bech32 address chain');
+assertEqual(detectChainFromAddress(SAMPLE_ADDRESSES.solana[0]), 'solana', 'Detects Solana address chain');
+assertEqual(detectChainFromAddress('invalid'), 'unknown', 'Returns unknown for invalid address');
+
+section('detectInputType()');
+assertEqual(detectInputType(SAMPLE_HASHES.evm[0]), 'tx', 'Detects EVM tx hash as tx type');
+assertEqual(detectInputType(SAMPLE_HASHES.bitcoin[0]), 'tx', 'Detects Bitcoin tx hash as tx type');
+assertEqual(detectInputType(SAMPLE_HASHES.solana[0]), 'tx', 'Detects Solana signature as tx type');
+assertEqual(detectInputType(SAMPLE_ADDRESSES.evm[0]), 'address', 'Detects EVM address as address type');
+assertEqual(detectInputType(SAMPLE_ADDRESSES.bitcoin[0]), 'address', 'Detects Bitcoin address as address type');
+assertEqual(detectInputType(SAMPLE_ADDRESSES.solana[0]), 'address', 'Detects Solana address as address type');
+assertEqual(detectInputType('invalid'), 'unknown', 'Returns unknown for invalid input');
+
+section('detectChain() - Addresses');
+assertEqual(detectChain(SAMPLE_ADDRESSES.evm[0]), 'evm', 'detectChain works with EVM address');
+assertEqual(detectChain(SAMPLE_ADDRESSES.bitcoin[0]), 'bitcoin', 'detectChain works with Bitcoin address');
+assertEqual(detectChain(SAMPLE_ADDRESSES.solana[0]), 'solana', 'detectChain works with Solana address');
 
 // =============================================================================
 // Summary

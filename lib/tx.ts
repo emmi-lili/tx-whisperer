@@ -1,12 +1,16 @@
 /**
  * Transaction utility functions for Tx Whisperer
  * 
- * This module provides heuristics-based chain detection for transaction hashes.
- * No RPC calls are made - detection is purely based on format analysis.
+ * This module provides heuristics-based chain detection for transaction hashes
+ * and wallet addresses. No RPC calls are made - detection is purely based on
+ * format analysis.
  */
 
 // Supported chain types
 export type ChainType = 'evm' | 'solana' | 'bitcoin' | 'unknown';
+
+// Input types: address, transaction hash, or unknown
+export type InputType = 'address' | 'tx' | 'unknown';
 
 // Base58 character set used by Solana (excludes 0, O, I, l)
 const BASE58_CHARS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -64,6 +68,119 @@ function isTrivialHex(hex: string): boolean {
   return /^0+$/.test(lower) || /^f+$/.test(lower);
 }
 
+// =============================================================================
+// Address Detection Helpers
+// =============================================================================
+
+/**
+ * Check if a string is a valid EVM address (0x + 40 hex chars)
+ */
+export function isEvmAddress(input: string): boolean {
+  if (!input.startsWith('0x') && !input.startsWith('0X')) {
+    return false;
+  }
+  const hexPart = input.slice(2);
+  return hexPart.length === 40 && isHexString(hexPart) && !isTrivialHex(hexPart);
+}
+
+/**
+ * Check if a string is a valid Solana address (base58, 32-44 chars)
+ * Solana addresses are base58-encoded public keys, typically 32-44 characters
+ */
+export function isSolanaAddress(input: string): boolean {
+  if (input.length < 32 || input.length > 44) {
+    return false;
+  }
+  if (!isBase58String(input)) {
+    return false;
+  }
+  // Must contain at least one non-hex character to distinguish from other formats
+  const hasNonHexChars = /[GHJKLMNPQRSTUVWXYZghjkmnpqrstuvwxyz]/.test(input);
+  return hasNonHexChars;
+}
+
+/**
+ * Check if a string is a valid Bitcoin address
+ * Supports:
+ * - Legacy (P2PKH): starts with '1', 25-34 chars
+ * - Script (P2SH): starts with '3', 25-34 chars  
+ * - Bech32 (SegWit): starts with 'bc1', 42-62 chars
+ */
+export function isBitcoinAddress(input: string): boolean {
+  // Legacy addresses: start with 1, 25-34 characters, base58
+  if (input.startsWith('1') && input.length >= 25 && input.length <= 34) {
+    return isBase58String(input);
+  }
+  
+  // P2SH addresses: start with 3, 25-34 characters, base58
+  if (input.startsWith('3') && input.length >= 25 && input.length <= 34) {
+    return isBase58String(input);
+  }
+  
+  // Bech32 addresses: start with bc1, 42-62 characters, lowercase alphanumeric
+  if (input.toLowerCase().startsWith('bc1') && input.length >= 42 && input.length <= 62) {
+    // Bech32 uses lowercase letters and digits (no 1, b, i, o)
+    const bech32Chars = '023456789acdefghjklmnpqrstuvwxyz';
+    const addressPart = input.toLowerCase().slice(3);
+    return addressPart.split('').every(char => bech32Chars.includes(char));
+  }
+  
+  return false;
+}
+
+/**
+ * Detect whether the input is an address or a transaction hash
+ */
+export function detectInputType(input: string): InputType {
+  const normalized = normalizeTx(input);
+  
+  if (!normalized || normalized.length < 20) {
+    return 'unknown';
+  }
+  
+  // Check for addresses first (they're shorter than tx hashes)
+  if (isEvmAddress(normalized)) {
+    return 'address';
+  }
+  
+  if (isBitcoinAddress(normalized)) {
+    return 'address';
+  }
+  
+  if (isSolanaAddress(normalized)) {
+    return 'address';
+  }
+  
+  // Check for transaction hashes
+  const chain = detectChainFromHash(normalized);
+  if (chain !== 'unknown') {
+    return 'tx';
+  }
+  
+  return 'unknown';
+}
+
+/**
+ * Detect chain from an address
+ */
+export function detectChainFromAddress(input: string): ChainType {
+  const normalized = normalizeTx(input);
+  
+  if (isEvmAddress(normalized)) {
+    return 'evm';
+  }
+  
+  if (isBitcoinAddress(normalized)) {
+    return 'bitcoin';
+  }
+  
+  if (isSolanaAddress(normalized)) {
+    return 'solana';
+  }
+  
+  return 'unknown';
+}
+
 /**
  * Try to extract a transaction hash from a URL
  */
@@ -111,19 +228,18 @@ export function normalizeTx(tx: string): string {
 }
 
 /**
- * Detect which blockchain a transaction hash belongs to.
+ * Detect which blockchain a transaction hash belongs to (hash only, not addresses).
+ * Internal function - use detectChain() for general detection.
  * 
  * Heuristics:
  * - EVM: Starts with "0x" followed by exactly 64 hex characters (total 66 chars)
  * - Bitcoin: Exactly 64 hex characters without "0x" prefix
  * - Solana: Base58 encoded, typically 86-90 characters long
  * 
- * @param tx - The transaction hash to analyze
+ * @param normalized - The normalized transaction hash to analyze
  * @returns The detected chain type
  */
-export function detectChain(tx: string): ChainType {
-  const normalized = normalizeTx(tx);
-  
+function detectChainFromHash(normalized: string): ChainType {
   // Empty or too short to be any valid hash
   if (!normalized || normalized.length < 32) {
     return 'unknown';
@@ -162,6 +278,26 @@ export function detectChain(tx: string): ChainType {
   }
   
   return 'unknown';
+}
+
+/**
+ * Detect which blockchain an input belongs to.
+ * Works with both transaction hashes AND wallet addresses.
+ * 
+ * @param input - The transaction hash or address to analyze
+ * @returns The detected chain type
+ */
+export function detectChain(input: string): ChainType {
+  const normalized = normalizeTx(input);
+  
+  // First, check if it's an address
+  const addressChain = detectChainFromAddress(normalized);
+  if (addressChain !== 'unknown') {
+    return addressChain;
+  }
+  
+  // Then, check if it's a transaction hash
+  return detectChainFromHash(normalized);
 }
 
 /**
