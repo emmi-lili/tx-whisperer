@@ -1,13 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import TxInputCard from '@/components/TxInputCard';
 import ChainBadge from '@/components/ChainBadge';
 import ExplorerLinks from '@/components/ExplorerLinks';
 import HistoryList from '@/components/HistoryList';
 import SampleHashes from '@/components/SampleHashes';
+import ContaminationCard from '@/components/ContaminationCard';
 import { detectChain, isValidTx, normalizeTx, ChainType } from '@/lib/tx';
 import { getHistory, addToHistory, clearHistory } from '@/lib/storage';
+import type { ContaminationStatus, ContaminationMatch } from '@/lib/types';
+
+// Contamination check state type
+type ContaminationState = ContaminationStatus | 'idle' | 'checking';
 
 export default function Home() {
   // Current transaction being analyzed
@@ -17,6 +22,11 @@ export default function Home() {
   // Validation error message
   const [error, setError] = useState<string | null>(null);
   
+  // Contamination check state
+  const [contaminationStatus, setContaminationStatus] = useState<ContaminationState>('idle');
+  const [contaminationMatches, setContaminationMatches] = useState<ContaminationMatch[]>([]);
+  const [contaminationError, setContaminationError] = useState<string | null>(null);
+  
   // Transaction history from localStorage
   const [history, setHistory] = useState<string[]>([]);
 
@@ -25,17 +35,47 @@ export default function Home() {
     setHistory(getHistory());
   }, []);
 
+  // Perform contamination check via API
+  const checkContamination = useCallback(async (input: string) => {
+    setContaminationStatus('checking');
+    setContaminationMatches([]);
+    setContaminationError(null);
+    
+    try {
+      const response = await fetch('/api/contamination', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check contamination');
+      }
+      
+      const data = await response.json();
+      setContaminationStatus(data.status as ContaminationStatus);
+      setContaminationMatches(data.matches || []);
+      
+    } catch (err) {
+      console.error('Contamination check error:', err);
+      setContaminationError(err instanceof Error ? err.message : 'Unknown error');
+      setContaminationStatus('idle');
+    }
+  }, []);
+
   // Handle new transaction submission
-  const handleSubmit = (tx: string) => {
+  const handleSubmit = async (tx: string) => {
     setError(null);
     
     const normalized = normalizeTx(tx);
     
-    // Validate the transaction hash
+    // Validate the transaction hash or address
     if (!isValidTx(normalized)) {
-      setError('Unable to detect chain. Please check your transaction hash format.');
+      setError('Unable to detect chain. Please check your input format.');
       setCurrentTx(null);
       setCurrentChain(null);
+      setContaminationStatus('idle');
       return;
     }
     
@@ -47,10 +87,13 @@ export default function Home() {
     // Add to history
     addToHistory(normalized);
     setHistory(getHistory());
+    
+    // Run contamination check
+    await checkContamination(normalized);
   };
 
   // Handle selecting a transaction from history
-  const handleSelectFromHistory = (tx: string) => {
+  const handleSelectFromHistory = async (tx: string) => {
     const chain = detectChain(tx);
     setCurrentTx(tx);
     setCurrentChain(chain);
@@ -59,6 +102,9 @@ export default function Home() {
     // Move to top of history
     addToHistory(tx);
     setHistory(getHistory());
+    
+    // Run contamination check
+    await checkContamination(tx);
   };
 
   // Handle clearing history
@@ -111,7 +157,7 @@ export default function Home() {
             {/* Transaction hash display */}
             <div className="space-y-2">
               <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
-                Transaction Hash
+                Input
               </h3>
               <div className="bg-gray-950 rounded-lg p-3 border border-gray-800">
                 <code className="text-sm text-gray-300 font-mono break-all">
@@ -124,6 +170,13 @@ export default function Home() {
             <ExplorerLinks tx={currentTx} chain={currentChain} />
           </div>
         )}
+
+        {/* Contamination Check Card */}
+        <ContaminationCard 
+          status={contaminationStatus}
+          matches={contaminationMatches}
+          error={contaminationError}
+        />
 
         {/* Sample hashes section */}
         <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-800 rounded-2xl p-6 shadow-xl">

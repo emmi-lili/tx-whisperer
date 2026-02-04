@@ -131,7 +131,7 @@ export default function TxInputCard({ onSubmit, error }: TxInputCardProps) {
           }
         `}
       >
-        Detect Chain
+        Detect & Scan
       </button>
     </form>
   );
