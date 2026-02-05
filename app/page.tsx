@@ -8,7 +8,7 @@ import HistoryList from '@/components/HistoryList';
 import SampleHashes from '@/components/SampleHashes';
 import ContaminationCard from '@/components/ContaminationCard';
 import { detectChain, isValidTx, normalizeTx, ChainType } from '@/lib/tx';
-import { getHistory, addToHistory, clearHistory } from '@/lib/storage';
+import { getHistory, addToHistory, clearHistory, updateContaminationStatus } from '@/lib/storage';
 import type { ContaminationStatus, ContaminationMatch } from '@/lib/types';
 
 // Contamination check state type
@@ -54,8 +54,13 @@ export default function Home() {
       }
       
       const data = await response.json();
-      setContaminationStatus(data.status as ContaminationStatus);
+      const status = data.status as ContaminationStatus;
+      
+      setContaminationStatus(status);
       setContaminationMatches(data.matches || []);
+      
+      // Update storage with contamination status
+      updateContaminationStatus(input, status);
       
     } catch (err) {
       console.error('Contamination check error:', err);
