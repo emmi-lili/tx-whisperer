@@ -1,17 +1,19 @@
 'use client';
 
-import { detectChain, getChainName, ChainType } from '@/lib/tx';
+import { detectChain, ChainType } from '@/lib/tx';
+import type { HistoryItem } from '@/lib/storage';
+import type { ContaminationStatus } from '@/lib/types';
 
 interface HistoryListProps {
-  history: string[];
-  onSelect: (tx: string) => void;
+  history: HistoryItem[];
+  onSelect: (value: string) => void;
   onClear: () => void;
 }
 
 // Shortened display of transaction hash
-function shortenTx(tx: string): string {
-  if (tx.length <= 20) return tx;
-  return `${tx.slice(0, 10)}...${tx.slice(-8)}`;
+function shortenValue(value: string): string {
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 10)}...${value.slice(-8)}`;
 }
 
 // Small badge for chain type in history
@@ -37,8 +39,45 @@ function SmallChainBadge({ chain }: { chain: ChainType }) {
   );
 }
 
+// Small badge for contamination status
+function ContaminationBadge({ status }: { status: ContaminationStatus | null }) {
+  if (!status) {
+    return null;
+  }
+
+  const config: Record<ContaminationStatus, { color: string; icon: string; label: string }> = {
+    clean: {
+      color: 'bg-green-500/20 text-green-400 border-green-500/30',
+      icon: '✓',
+      label: 'Clean',
+    },
+    flagged: {
+      color: 'bg-red-500/20 text-red-400 border-red-500/30',
+      icon: '!',
+      label: 'Flagged',
+    },
+    unknown: {
+      color: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+      icon: '?',
+      label: 'Unknown',
+    },
+  };
+
+  const { color, icon, label } = config[status];
+
+  return (
+    <span 
+      className={`px-1.5 py-0.5 rounded text-xs font-medium border ${color}`}
+      title={`Contamination: ${label}`}
+    >
+      {icon}
+    </span>
+  );
+}
+
 /**
- * Displays a list of previously searched transactions.
+ * Displays a list of previously searched transactions/addresses.
+ * Shows chain type and contamination status badges.
  * Allows users to quickly re-select past searches or clear history.
  */
 export default function HistoryList({ history, onSelect, onClear }: HistoryListProps) {
@@ -58,9 +97,9 @@ export default function HistoryList({ history, onSelect, onClear }: HistoryListP
             d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        <p className="text-sm">No transaction history yet</p>
+        <p className="text-sm">No search history yet</p>
         <p className="text-xs text-gray-600 mt-1">
-          Your searched transactions will appear here
+          Your searched addresses and transactions will appear here
         </p>
       </div>
     );
@@ -84,12 +123,12 @@ export default function HistoryList({ history, onSelect, onClear }: HistoryListP
       </div>
       
       <div className="space-y-2 max-h-64 overflow-y-auto">
-        {history.map((tx, index) => {
-          const chain = detectChain(tx);
+        {history.map((item, index) => {
+          const chain = detectChain(item.value);
           return (
             <button
-              key={`${tx}-${index}`}
-              onClick={() => onSelect(tx)}
+              key={`${item.value}-${index}`}
+              onClick={() => onSelect(item.value)}
               className="
                 w-full flex items-center justify-between gap-3
                 px-3 py-2
@@ -101,9 +140,12 @@ export default function HistoryList({ history, onSelect, onClear }: HistoryListP
                 group
               "
             >
-              <code className="text-sm text-gray-300 font-mono truncate group-hover:text-white">
-                {shortenTx(tx)}
-              </code>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <ContaminationBadge status={item.contaminationStatus} />
+                <code className="text-sm text-gray-300 font-mono truncate group-hover:text-white">
+                  {shortenValue(item.value)}
+                </code>
+              </div>
               <SmallChainBadge chain={chain} />
             </button>
           );

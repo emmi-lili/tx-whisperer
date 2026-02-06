@@ -8,7 +8,7 @@ import HistoryList from '@/components/HistoryList';
 import SampleHashes from '@/components/SampleHashes';
 import ContaminationCard from '@/components/ContaminationCard';
 import { detectChain, isValidTx, normalizeTx, ChainType } from '@/lib/tx';
-import { getHistory, addToHistory, clearHistory, updateContaminationStatus } from '@/lib/storage';
+import { getHistoryItems, addToHistory, clearHistory, updateContaminationStatus, HistoryItem } from '@/lib/storage';
 import type { ContaminationStatus, ContaminationMatch } from '@/lib/types';
 
 // Contamination check state type
@@ -28,11 +28,11 @@ export default function Home() {
   const [contaminationError, setContaminationError] = useState<string | null>(null);
   
   // Transaction history from localStorage
-  const [history, setHistory] = useState<string[]>([]);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
   // Load history on mount
   useEffect(() => {
-    setHistory(getHistory());
+    setHistory(getHistoryItems());
   }, []);
 
   // Perform contamination check via API
@@ -59,8 +59,9 @@ export default function Home() {
       setContaminationStatus(status);
       setContaminationMatches(data.matches || []);
       
-      // Update storage with contamination status
+      // Update storage with contamination status and refresh history
       updateContaminationStatus(input, status);
+      setHistory(getHistoryItems());
       
     } catch (err) {
       console.error('Contamination check error:', err);
@@ -91,7 +92,7 @@ export default function Home() {
     
     // Add to history
     addToHistory(normalized);
-    setHistory(getHistory());
+    setHistory(getHistoryItems());
     
     // Run contamination check
     await checkContamination(normalized);
@@ -106,7 +107,7 @@ export default function Home() {
     
     // Move to top of history
     addToHistory(tx);
-    setHistory(getHistory());
+    setHistory(getHistoryItems());
     
     // Run contamination check
     await checkContamination(tx);
